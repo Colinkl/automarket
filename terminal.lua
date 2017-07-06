@@ -1,4 +1,3 @@
---https://pastebin.com/buavY589
 --wget "https://raw.githubusercontent.com/Krutoy242/Gopher-Programs/Packed/gml/lib/gml_full.lua" gml.lua
 package.loaded.gml=nil
 package.loaded.gfxbuffer=nil
@@ -200,7 +199,7 @@ local function scanNet()
   end
 end
 
-local function getRealCost(item) -- рассчет реальной стоимости
+local function getRealCost(item)
   local real_cost = math.ceil(((db.items[item].o/(db.items[item].i-db.items[item].o))/db.items[item].i)*Multiplier)
   if real_cost <= 1 then
     real_cost = 1
@@ -210,7 +209,7 @@ local function getRealCost(item) -- рассчет реальной стоимо
   return real_cost
 end
 
-local function setNewCurrentCost(item) -- установка новой текущей стоимости
+local function setNewCurrentCost(item)
   --db.items[item].cost = getRealCost(item)
   local cost = getRealCost(item)
   if cost > db.items[item].cost then
@@ -433,8 +432,7 @@ local buy_c = buy_menu:addButton(32, 15, 13, 1, 'Далее', function()
     itemcost.width = #buy_cost+6
     itemcost.posX = 45-itemcost.width
     itemcost.text = 'Цена: '..buy_cost
-    amou.text = 0
-    totalcoin.text = 0
+    size, amou.text, totalcoin.text = 0, 0, 0
     buy_dialog:run()
   end
 end)
@@ -469,12 +467,14 @@ local num9 = buy_dialog:addButton(11+nc.x, 7+nc.y, 3, 1, '9',function()rebuild(9
 local num0 = buy_dialog:addButton(6+nc.x, 9+nc.y, 3, 1, '0',function()rebuild(0)end)
 local numok = buy_dialog:addButton(11+nc.x, 9+nc.y, 3, 1, 'ok',function()
   local item = uiitemsNet[0][buy_list:getSelected()]
-  sell(item, size)
-  relogin()
-  logout()
-  buy_dialog.close()
-  buy_menu:hide()
-  buy_menu.close()
+  if size > 0 then
+    sell(item, size)
+    relogin()
+    logout()
+    buy_dialog.close()
+    buy_menu:hide()
+    buy_menu.close()
+  end
 end)
 local numD = buy_dialog:addButton(1+nc.x, 9+nc.y, 3, 1, '<',function()
   if size == 0 then
