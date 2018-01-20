@@ -83,22 +83,22 @@ button:focus {
   fill-color-bg: 0x333333;
   border-color-bg: 0x0000ff;
   border-color-fg: 0xffffff;
-  border: false;
+  border: true;
   border-left: false;
   border-right: false;
 }
 
 textfield, textbox {
   selected-color: 0xffffff;
-  selected-background: 0x0000ff;
+  selected-background: 0x005500;
   text-color: 0xffffff;
-  text-background: 0x5a5a5a;  
+  text-background: 0x005500;
 }
 
 
 textbox:focus, textfield:focus {
   text-color: 0xffffff;
-  text-background: 0x000000;  
+  text-background: 0x005500;  
 }
 
 
