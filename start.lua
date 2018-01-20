@@ -1,13 +1,16 @@
-local redstone = require('component').redstone
+local component = require('component')
 local computer = require('computer')
 local event = require('event')
+local redstone = component.redstone
+local screen = component.screen
 local signal = computer.pullSignal
 redstone.setWakeThreshold(15)
+screen.setTouchModeInverted(true)
 
 function computer.pullSignal(...)
   local e = {signal(...)}
   if e[1] == 'redstone_changed' and e[5] == 15 then
-    os.execute('reboot')
+    computer.shutdown(true)
   end
   return table.unpack(e)
 end
