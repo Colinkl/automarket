@@ -1,75 +1,79 @@
---wget "https://raw.githubusercontent.com/Krutoy242/Gopher-Programs/Packed/gml/lib/gml_full.lua" gml.lua
+-- w = window, tx = text, l = list, b = button
 package.loaded.gml=nil
 package.loaded.gfxbuffer=nil
 local gml = require('gml')
 local event = require('event')
-local unicode = require('unicode')
+local utf8 = require('unicode')
 local computer = require('computer')
 local component = require('component')
 local serialization = require('serialization')
-local interface = component.me_interface
-local chest = component.chest
 local modem = component.modem
-local gpu = component.gpu
-local SIDE = 'UP'
-local port = 50021
-local BUFFER, uiBuffer, itemsNet, uiitemsNet = {}, {}, {}, {}
-local Multiplier = 1000000 -- множитель реальной стоимости, необходим для целочисленного отображения цены
-local Step = 1 -- шаг сделки, количество пунктов, на которые текущая цена должна приблизиться к реальной
-local Set = 0.005 -- процент с продаж
-local Operator = 'Doob' -- оператор системы
-local maxlog = 30
-local db = {
-  last = {},
-  users = {},
-  wlist = {
-    ['minecraft:diamond|0'] = true,
-    ['minecraft:redstone|0'] = true,
-    ['minecraft:iron_ingot|0'] = true,
-    ['minecraft:gold_ingot|0'] = true,
-    ['minecraft:coal|0'] = true,
-    ['minecraft:emerald|0'] = true,
-    ['minecraft:nether_star|0'] = true,
-    ['minecraft:glowstone_dust|0'] = true,
-    ['minecraft:dye|4'] = true,
-    ['IC2:itemRubber|0'] = true,
-    ['IC2:blockOreUran|0'] = true,
-    ['IC2:itemOreIridium|0'] = true
-  },
-  items = {
-    ['minecraft:diamond|0']={label='Алмаз',cost=1,o=0,i=0},
-    ['minecraft:redstone|0']={label='Редстоун',cost=1,o=0,i=0},
-    ['minecraft:iron_ingot|0']={label='Железный слиток',cost=1,o=0,i=0},
-    ['minecraft:gold_ingot|0'] = {label='Золотой слиток',cost=1,o=0,i=0},
-    ['minecraft:coal|0']={label='Уголь',cost=1,o=0,i=0},
-    ['minecraft:emerald|0']={label='Изумруд',cost=1,o=0,i=0},
-    ['minecraft:nether_star|0']={label='Звезда ада',cost=1,o=0,i=0},
-    ['minecraft:glowstone_dust|0']={label='Светопыль',cost=1,o=0,i=0},
-    ['minecraft:dye|4']={label='Лазурит',cost=1,o=0,i=0},
-    ['IC2:itemRubber|0']={label='Резина',cost=1,o=0,i=0},
-    ['IC2:blockOreUran|0']={label='Урановая руда',cost=1,o=0,i=0},
-    ['IC2:itemOreIridium|0']={label='Иридиевая руда',cost=1,o=0,i=0}
-  }
-}
-gpu.setResolution(46, 15)
-local CURRENT_USER, BALANCE_TEXT, lastlogin
-local nc = {x = 14, y = 4}
-local buy_cost = 0
-local size = 0
-local sell_total = 0
-local sell_items = {}
-local dbname = 'market.db'
+local i_c = component.inventory_controller
+local interface = component.me_interface
+component.gpu.setResolution(48, 17)
+local W, H = component.gpu.getResolution()
+local hW = W/2
+local db = {}
+--th=require('thread').create(function()while true do pcall(os.sleep, 1)end end):detach()
+--th=require('thread').create(function()while true do pcall(os.sleep, 1)end end):detach()
+function event.shouldInterrupt() return false end
+function event.shouldSoftInterrupt() return false end
 
-local function savedb()
-  local file = io.open(dbname, 'w')
+local cfg = {
+  port = 3215,
+  operator = 'MrSnake20_15',
+  logins = 30,
+  fee = 0.01,
+  max = 100000, -- maximum cost
+  ic_side = 1, -- chest for i_c
+  mei_side = 'WEST' -- chest for me_interface
+}
+
+local tmpData = {
+  price_selected = 0,
+  CURRENT_USER = '',
+  BALANCE_TEXT = '',
+  BTXT_LEN = 0,
+  lastlogin = 0,
+  tooltip = '',
+  ttp_len = 0,
+  BUFFER = {},
+  uiBuffer = {},
+  uiStorage = {}
+}
+
+local loc = {
+  buy = 'Купить',
+  sell = 'Продать',
+  sell_all = 'Продать всё',
+  info = 'Информация',
+  cancel = 'Отмена',
+  next = 'Далее',
+  apply = 'Принять',
+  exit = 'Выход',
+  label = 'Наименование',
+  amount = 'Количество',
+  inStock = 'В наличии: ',
+  total = 'Сумма',
+  price = 'Цена',
+  sell_items = 'Продать предметы?',
+  sell_amount = 'Количество: ',
+  sell_profit = 'На сумму: $_ (комиссия ~%)',
+  operations = 'Доступно операций: ',
+  reset = 'Сброс через _ минут',
+  drop = 'Брось предметы для продажи перед роботом'
+}
+
+local function save_db()
+  local file = io.open('market.db', 'w')
   file:write(serialization.serialize(db))
   file:close()
 end
 
-local function loaddb()
-  local file = io.open(dbname, 'r')
+local function load_db()
+  local file = io.open('market.db', 'r')
   if not file then
-    file = io.open(dbname, 'w')
+    file = io.open('market.db', 'w')
     file:write(serialization.serialize(db))
   else
     local serdb = file:read('a')
@@ -78,467 +82,462 @@ local function loaddb()
   file:close()
 end
 
-local function addlog(str)
+local function log_add(str)
   local file = io.open('market.log', 'a')
   file:write(str..'\n')
   file:close()
 end
 
-local function bb()
-  BALANCE_TEXT = CURRENT_USER..': '..db.users[CURRENT_USER]
-end
-
-local function addspace(str, n)
-  if n-1 < unicode.len(str) then
-    return unicode.sub(str, 1, n)
+local function add_sp(str, n)
+  if n-1 < utf8.len(str) then
+    return utf8.sub(str, 1, n)
   else
-    for i = 1, n-unicode.len(str) do
+    for i = 1, n-utf8.len(str) do
       str = str..' '
     end
     return str
   end
 end
 
-local function getFingerprint(item)
-  local items = interface.getAvailableItems()
-  for i = 1, #items do
-    if items[i].fingerprint.id..'|'..items[i].fingerprint.dmg == item then
-      return items[i].fingerprint
+local function logout()
+  computer.beep(220, 0.1)
+  modem.broadcast(cfg.port, 'export')
+  computer.removeUser(tmpData.CURRENT_USER)
+  tmpData.CURRENT_USER = nil
+end
+
+local function updateCost(item)
+  -- O/(I-O[+1])/I*M
+  -- ((R-C)/R)*C+C
+  local R_cost = math.ceil(db.items[item].o/(db.items[item].i-db.items[item].o+1)/db.items[item].i*cfg.max)
+  if db.items[item].cost > R_cost then
+    db.items[item].cost = db.items[item].cost - 1
+  elseif db.items[item].cost < R_cost then
+    db.items[item].cost = db.items[item].cost + math.random(0, 1)
+  end
+  if db.items[item].cost < 0 then
+    db.items[item].cost = 0
+  end
+  --db.items[item].cost = R_cost
+  if os.time()-db.users[tmpData.CURRENT_USER].lastlogin < 259200 then
+    if db.users[tmpData.CURRENT_USER].count <= cfg.logins then
+      db.users[tmpData.CURRENT_USER].count = db.users[tmpData.CURRENT_USER].count + 1
     end
+  else
+    db.users[tmpData.CURRENT_USER].count = 1
+    db.users[tmpData.CURRENT_USER].lastlogin = os.time()
   end
 end
 
-local function toBuffer(item, amount)
-  local fp = getFingerprint(item)
-  local counter, current, size = 0, amount
-  if fp then
-    for i = 1, math.ceil(amount/64) do
-      size = interface.exportItem(fp, SIDE, current).size
-      counter, current = counter + size, current - size
+local function buy(item, amount)
+  local n = item:find('|')
+  local fprint = {id = item:sub(1, n-1), dmg = item:sub(1, n+1)}
+  local item_dmp = interface.getItemDetail(fprint)
+  local current, result, size = amount, 0
+  if item_dmp then
+    item_dmp = item_dmp.basic()
+    if item_dmp.qty < amount then
+      amount = item_dmp.qty
+    end
+    for stack = 1, math.ceil(amount/item_dmp.max_size) do
+      size = interface.exportItem(fprint, cfg.mei_side, current).size
+      current, result = current - size, result + size
     end
   end
-  return counter
+  db.items[tmpData.selected].o = db.items[tmpData.selected].o + result
+  log_add(os.time()..'@'..tmpData.CURRENT_USER..'@'..db.users[tmpData.CURRENT_USER].balance..'@<@'..item..'@'..amount..'@'..db.items[item].i-db.items[item].o..'@'..db.items[item].cost)
+  db.users[tmpData.CURRENT_USER].balance = db.users[tmpData.CURRENT_USER].balance - tmpData.price_selected * result
+  updateCost(item)
+  logout()
+  computer.beep(440, 0.05)
 end
 
-local function toNet(item, amount)
-  local counter = 0
-  for s = 1, chest.getInventorySize() do
-    local fitem = chest.getStackInSlot(s)
-    if fitem then
-      if item == fitem.id..'|'..fitem.dmg then
-        if fitem.qty < amount then
-          interface.pullItemIntoSlot(SIDE, s, fitem.qty)
-          amount, counter = amount - fitem.qty, counter+fitem.qty
-        elseif fitem.qty >= amount then
-          interface.pullItemIntoSlot(SIDE, s, amount)
-          amount, counter = 0, counter+amount
+local function sell()
+  for item, amount in pairs(tmpData.selected) do
+    local result = 0
+    for slot = 1, i_c.getInventorySize(cfg.ic_side) do
+      local fitem = i_c.getStackInSlot(cfg.ic_side, slot)
+      if fitem and item == fitem.name..'|'..fitem.damage then
+        local size
+        if fitem.size < amount then
+          size = interface.pullItem(cfg.mei_side, slot, fitem.qty)
+        elseif fitem.size >= amount then
+          size = interface.pullItem(cfg.mei_side, slot, amount)
+        end
+        amount, result = amount - size, result + size
+        if amount == 0 then
           break
         end
       end
     end
+    db.items[item].i = db.items[item].i + result
+    log_add(os.time()..'@'..tmpData.CURRENT_USER..'@'..db.users[tmpData.CURRENT_USER].balance..'@>@'..item..'@'..result..'@'..db.items[item].i-db.items[item].o..'@'..db.items[item].cost)
+    updateCost(item)
   end
-  return counter
+  db.users[tmpData.CURRENT_USER].balance = db.users[tmpData.CURRENT_USER].balance+tmpData.price_selected
+  db.users[cfg.operator].balance = db.users[cfg.operator].balance + tmpData.fee
+  logout()
+  computer.beep(440, 0.05)
 end
 
-local function scanBuffer()
-  BUFFER, uiBuffer = {}, {}
-  for s = 1, chest.getInventorySize() do
-    local item = chest.getStackInSlot(s)
+local function netScan()
+  tmpData.uiStorage = {[0]={}}
+  for name, item in pairs(db.items) do
+    if item.i and item.o and item.label and item.cost then
+      local size = item.i-item.o
+      if size > 0 then
+        local text = add_sp(add_sp(item.label, W-26)..size, W-15)..item.cost
+        table.insert(tmpData.uiStorage, text)
+        tmpData.uiStorage[0][text] = name
+      end
+    end
+  end
+end
+
+local function bufferScan()
+  tmpData.BUFFER = {}
+  local item, name
+  for slot = 1, i_c.getInventorySize(cfg.ic_side) do
+    item = i_c.getStackInSlot(cfg.ic_side, slot)
     if item then
-      local name = item.id..'|'..item.dmg
-      if db.wlist[name] then
-        if not db.items[name] then
-          db.items[name] = {label=item.display_name,cost=1,o=0,i=0}
-        end
-        if not BUFFER[name] then
-          BUFFER[name] = item.qty
+      name = item.name..'|'..item.damage
+      if db.items[name] then
+        if not tmpData.BUFFER[name] then
+          tmpData.BUFFER[name] = item.size
         else
-          BUFFER[name] = BUFFER[name] + item.qty
+          tmpData.BUFFER[name] = tmpData.BUFFER[name]+item.size
         end
       end
     end
   end
-  uiBuffer[0] = {}
-  for i, j in pairs(BUFFER) do
-    if db.wlist[i] and db.items[i] then
-      local txt = db.items[i].label
-      txt = addspace(txt, 17)
-      txt = txt..j
-      txt = addspace(txt, 29)
-      txt = txt..db.items[i].cost*j
-      table.insert(uiBuffer, txt)
-      uiBuffer[0][txt] = i
-    end
+  tmpData.uiBuffer = {[0] = {}}
+  for item, size in pairs(tmpData.BUFFER) do
+    local text = add_sp(add_sp(db.items[item].label, W-26)..size, W-15)..db.items[item].cost
+    table.insert(tmpData.uiBuffer, text)
+    tmpData.uiBuffer[0][text] = item
   end
 end
 
-local function scanNet()
-  local tbl = interface.getItemsInNetwork()
-  itemsNet, uiitemsNet = {}, {}
-  for i = 1, #tbl do
-    local item = tbl[i].name..'|'..tbl[i].damage
-    if db.wlist[item] then
-      if itemsNet[item] then
-        itemsNet[item] = itemsNet[item]+tbl[i].size
-      else
-        itemsNet[item] = tbl[i].size
+local function utf_find(str, match)
+  local match_len = utf8.len(match)
+  for i = 1, utf8.len(str) do
+    if utf8.sub(str, i, i+match_len-1) == match then
+      return i
+    end
+  end
+  return 0
+end
+
+local function update_txBalance()
+  tmpData.BALANCE_TEXT = tmpData.CURRENT_USER..': '..db.users[tmpData.CURRENT_USER].balance
+  tmpData.BTXT_LEN = #tmpData.BALANCE_TEXT
+end
+
+local wMain = gml.create(1, 1, W, H)
+local wBuyList = gml.create(1, 1, W, H)
+local wBuy = gml.create(1, 1, W, H)
+local wSellLoad = gml.create(1, 1, W, H)
+local wSellList = gml.create(1, 1, W, H)
+local wSell = gml.create(1, 1, W, H)
+local wInfo = gml.create(1, 1, W, H)
+wMain.style = gml.loadStyle('style')
+wBuyList.style = wMain.style
+wBuy.style = wMain.style
+wSellLoad.style = wMain.style
+wSellList.style = wMain.style
+wSell.style = wMain.style
+wInfo.style = wMain.style
+
+-- Buy List -----------------------
+local txBalance_wBuyList = wBuyList:addLabel(2, 1, 1, '')
+local txTooltip_wBuyList = wBuyList:addLabel(2, 2, 1, '')
+local lItems_wBuyList = wBuyList:addListBox('center', 3, W-4, H-6, {})
+local tfFind_wBuyList = wBuyList:addTextField(W-24,1,17)
+local bFind_wBuyList = wBuyList:addButton('right', 1, 6, 1, 'Find', function()
+  if #tfFind_wBuyList.text > 0 and #lItems_wBuyList.list > 1 then
+    local tmpList = {table.unpack(lItems_wBuyList.list)}
+    for i = 1, #tmpList do
+      if utf_find(utf8.lower(tmpList[i]), utf8.lower(tfFind_wBuyList.text)) > 0 then
+        local tmpItem = tmpList[i]
+        table.remove(tmpList, i)
+        table.insert(tmpList, 1, tmpItem)
       end
     end
+    tfFind_wBuyList.text = ''
+    lItems_wBuyList:updateList(tmpList)
+    wBuyList:draw()
   end
-  uiitemsNet[0] = {}
-  for i, j in pairs(itemsNet) do
-    if db.wlist[i] and db.items[i] then
-      local txt = db.items[i].label
-      txt = addspace(txt, 17)
-      txt = txt..j
-      txt = addspace(txt, 29)
-      txt = txt..db.items[i].cost
-      table.insert(uiitemsNet, txt)
-      uiitemsNet[0][txt] = i
-    end
-  end
-end
+end)
+local bCancel_wBuyList = wBuyList:addButton('left', H-2, 13, 1, loc.cancel, function()
+  logout()
+  wBuyList:hide()
+  wBuyList.close()
+end)
+-----------------------------------
 
-local function getRealCost(item)
-  local real_cost = math.ceil(((db.items[item].o/(db.items[item].i-db.items[item].o))/db.items[item].i)*Multiplier)
-  if real_cost <= 1 then
-    real_cost = 1
-  --elseif real_cost == math.huge then
-  --  real_cost = Multiplier
-  end
-  return real_cost
-end
-
-local function setNewCurrentCost(item)
-  --db.items[item].cost = getRealCost(item)
-  local cost = getRealCost(item)
-  if cost > db.items[item].cost then
-    db.items[item].cost = db.items[item].cost + Step
-  elseif cost < db.items[item].cost then
-    db.items[item].cost = db.items[item].cost - Step
-  end
-  if db.items[item].cost < 1 then
-    db.items[item].cost = 1
-  end
-end
-
-local function transfer(target, amount)
-  if db.users[CURRENT_USER] and db.users[CURRENT_USER] >= amount then
-    if not db.users[CURRENT_USER] then db.users[CURRENT_USER] = 0 end
-    if not db.users[target] then db.users[target] = 0 end
-    db.users[CURRENT_USER] = db.users[CURRENT_USER] - amount
-    db.users[target] = db.users[target] + amount
-    addlog(os.time()..'@'..CURRENT_USER..'@'..db.users[CURRENT_USER]..'@T@'..target..'@'..db.users[target]..'@'..amount)
-    savedb()
-  end
-end
-
-local function buy(titems) -- покупка предметов у пользователя
-  local summ = 0
-  for item, amount in pairs(titems) do
-    local size = toNet(item, amount)
-    if db.wlist[item] then
-      db.items[item].i = db.items[item].i + size
-      db.users[CURRENT_USER] = db.users[CURRENT_USER] + (db.items[item].cost * size)
-      summ = summ + (db.items[item].cost * size)
-      setNewCurrentCost(item)
-      addlog(os.time()..'@'..CURRENT_USER..'@'..db.users[CURRENT_USER]..'@>@'..item..'@'..size..'@'..db.items[item].i-db.items[item].o..'@'..db.items[item].cost)
-    end
-  end
-  if CURRENT_USER ~= Operator and summ > 1 then
-    transfer(Operator, math.ceil(summ*Set))
-  end
-  savedb()
-  bb()
-end
-
-local function sell(item, amount) -- продажа предметов пользователю
-  local total = db.items[item].cost * amount
-  if db.wlist[item] and db.users[CURRENT_USER] >= total then
-    toBuffer(item, amount)
-	db.items[item].o = db.items[item].o + amount
-	db.users[CURRENT_USER] = db.users[CURRENT_USER] - total
-    setNewCurrentCost(item)
-    addlog(os.time()..'@'..CURRENT_USER..'@'..db.users[CURRENT_USER]..'@<@'..item..'@'..amount..'@'..db.items[item].i-db.items[item].o..'@'..db.items[item].cost)
-    savedb()
-  end
-  bb()
-end
-
-local function logout()
-  modem.broadcast(port, 2)
-  computer.removeUser(CURRENT_USER)
-  CURRENT_USER = nil
-end
-
-local function relogin()
-  if os.time()-db.last[CURRENT_USER].login < 259200 then
-    if db.last[CURRENT_USER].count <= maxlog then
-      db.last[CURRENT_USER].count = db.last[CURRENT_USER].count + 1
-    end
+-- Buy ----------------------------
+local txBalance_wBuy = wBuy:addLabel(1, 1, 1, '')
+local txItemName_wBuy = wBuy:addLabel(1, 2, 1, '')
+local txInStock_wBuy = wBuy:addLabel(1, 3, 1, '')
+local txItemPrice_wBuy = wBuy:addLabel(1, 4, 1, '')
+local txTotalSum_wBuy = wBuy:addLabel(1, 6, 1, '')
+local txAmount_wBuy = wBuy:addLabel(1, 7, 1, '')
+local nAmount_wBuy = 0
+local function nUpdate(n)
+  if nAmount_wBuy == 0 then
+    nAmount_wBuy = n
   else
-    db.last[CURRENT_USER].count = 1
-    db.last[CURRENT_USER].login = os.time()
+    nAmount_wBuy = nAmount_wBuy*10+n
   end
+  if nAmount_wBuy*tmpData.price_selected > db.users[tmpData.CURRENT_USER].balance then
+    nAmount_wBuy = math.floor(db.users[tmpData.CURRENT_USER].balance/tmpData.price_selected)
+  end
+  local item = db.items[tmpData.selected]
+  local size = item.i-item.o
+  if nAmount_wBuy > size then
+    nAmount_wBuy = size
+  end
+  txTotalSum_wBuy.text = loc.total..': '..nAmount_wBuy*tmpData.price_selected
+  txTotalSum_wBuy.width = utf8.len(txTotalSum_wBuy.text)
+  txTotalSum_wBuy.posX = hW-utf_find(txTotalSum_wBuy.text, ':')
+  txAmount_wBuy.text = loc.amount..': '..nAmount_wBuy
+  txAmount_wBuy.width = utf8.len(txAmount_wBuy.text)
+  txAmount_wBuy.posX = hW-utf_find(txAmount_wBuy.text, ':')
+  wBuy:draw()
 end
+local num0 = wBuy:addButton(hW-1, 15, 3, 1, '0', function()nUpdate(0)end)
+local num1 = wBuy:addButton(hW-6, 9, 3, 1, '1', function()nUpdate(1)end)
+local num2 = wBuy:addButton(hW-1, 9, 3, 1, '2', function()nUpdate(2)end)
+local num3 = wBuy:addButton(hW+4, 9, 3, 1, '3', function()nUpdate(3)end)
+local num4 = wBuy:addButton(hW-6, 11, 3, 1, '4', function()nUpdate(4)end)
+local num5 = wBuy:addButton(hW-1, 11, 3, 1, '5', function()nUpdate(5)end)
+local num6 = wBuy:addButton(hW+4, 11, 3, 1, '6', function()nUpdate(6)end)
+local num7 = wBuy:addButton(hW-6, 13, 3, 1, '7', function()nUpdate(7)end)
+local num8 = wBuy:addButton(hW-1, 13, 3, 1, '8', function()nUpdate(8)end)
+local num9 = wBuy:addButton(hW+4, 13, 3, 1, '9', function()nUpdate(9)end)
+local numB = wBuy:addButton(hW-6, 15, 3, 1, '<', function() -- backspace
+  if nAmount_wBuy == 0 then
+    wBuy.close()
+  elseif #tostring(nAmount_wBuy) == 1 and nAmount_wBuy ~= 0 then
+    nAmount_wBuy = 0
+  elseif #tostring(nAmount_wBuy) > 1 then
+    nAmount_wBuy = (nAmount_wBuy-(nAmount_wBuy%10))/10
+  end
+  txTotalSum_wBuy.text = loc.total..': '..nAmount_wBuy*tmpData.price_selected
+  txTotalSum_wBuy.width = utf8.len(txTotalSum_wBuy.text)
+  txTotalSum_wBuy.posX = hW-utf_find(txTotalSum_wBuy.text, ':')
+  txAmount_wBuy.text = loc.amount..': '..tostring(nAmount_wBuy)
+  txAmount_wBuy.width = utf8.len(txAmount_wBuy.text)
+  txAmount_wBuy.posX = hW-utf_find(txAmount_wBuy.text, ':')
+  wBuy:draw()
+end)
+local numOk = wBuy:addButton(hW+4, 15, 3, 1, 'ok', function()
+  if nAmount_wBuy > 0 then
+    buy(tmpData.selected, nAmount_wBuy)
+    nAmount_wBuy = 0
+    wBuyList:hide()
+    wBuyList.close()
+    wBuy:hide()
+    wBuy.close()
+  end
+end)
+-----------------------------------
 
-local main_menu = gml.create(1, 1, 46, 15)
-local wallet_menu = gml.create(1, 1, 46, 15)
-local sell_menu = gml.create(1, 1, 46, 15)
-local buy_menu = gml.create(1, 1, 46, 15)
-local info_dialog = gml.create(1, 1, 46, 15)
-local buy_dialog = gml.create(1, 1, 46, 15)
-local sell_confirm_dialog = gml.create(1, 1, 46, 15)
+-- Buy List -- NEXT BTN -----------
+local bNext_wBuyList = wBuyList:addButton('right', H-2, 13, 1, loc.next, function()
+  tmpData.selected = tmpData.uiStorage[0][lItems_wBuyList:getSelected()]
+  if tmpData.selected then
+    tmpData.price_selected = db.items[tmpData.selected].cost
+    tmpData.amount_selected = db.items[tmpData.selected].i-db.items[tmpData.selected].o
+    txBalance_wBuy.text = tmpData.BALANCE_TEXT
+    txBalance_wBuy.width = tmpData.BTXT_LEN
+    txBalance_wBuy.posX = hW-utf_find(tmpData.BALANCE_TEXT, ':')
+    txInStock_wBuy.text = loc.inStock..tmpData.amount_selected
+    txInStock_wBuy.width = utf8.len(txInStock_wBuy.text)
+    txInStock_wBuy.posX = hW-utf_find(txInStock_wBuy.text, ':')
+    txItemName_wBuy.text = loc.label..': '..db.items[tmpData.selected].label
+    txItemName_wBuy.width = utf8.len(txItemName_wBuy.text)
+    txItemName_wBuy.posX = hW-utf_find(txItemName_wBuy.text, ':')
+    txItemPrice_wBuy.text = loc.price..': '..tmpData.price_selected
+    txItemPrice_wBuy.width = utf8.len(txItemPrice_wBuy.text)
+    txItemPrice_wBuy.posX = hW-utf_find(txItemPrice_wBuy.text, ':')
+    txTotalSum_wBuy.text = loc.total..': 0'
+    txTotalSum_wBuy.width = utf8.len(txTotalSum_wBuy.text)
+    txTotalSum_wBuy.posX = hW-utf_find(txTotalSum_wBuy.text, ':')
+    txAmount_wBuy.text = loc.amount..': 0'
+    txAmount_wBuy.width = utf8.len(txAmount_wBuy.text)
+    txAmount_wBuy.posX = hW-utf_find(txAmount_wBuy.text, ':')
+    wBuy:run()
+  end
+end)
+-----------------------------------
 
-main_menu.style = gml.loadStyle('style')
-sell_menu.style = main_menu.style
-buy_menu.style = main_menu.style
-wallet_menu.style = main_menu.style
-info_dialog.style = main_menu.style
-buy_dialog.style = main_menu.style
-sell_confirm_dialog.style = main_menu.style
+-- Sell ---------------------------
+local txToSell = wSell:addLabel('center', H/3, utf8.len(loc.sell_items), loc.sell_items)
+local txAmount_wSell = wSell:addLabel('center', H/3+1, 1, '')
+local txProfit_wSell = wSell:addLabel('center', H/3+2, 1, '')
+local bCancel_wSell = wSell:addButton('left', H-2, 20, 3, loc.cancel, function()
+  logout()
+  wSell.close()
+end)
+local bNext_wSell = wSell:addButton('right', H-2, 20, 3, loc.apply, function()
+  if tmpData.selected then
+    sell()
+    wSell.close()
+  end
+end)
+-----------------------------------
 
---------------------------------------BALANCE
-local lbl_bal = wallet_menu:addLabel(1, 3, 1, 1)
-local lbl2_bal = wallet_menu:addLabel(1, 5, 1, 1)
-local lbl3_bal = wallet_menu:addLabel(1, 7, 1, 1)
-local btn_exit_bal = wallet_menu:addButton('center', 10, 20, 3, 'Выход', function()
+-- Sell List ----------------------
+local txBalance_wSellList = wSellList:addLabel('center', 1, 1, '')
+local txTooltip_wSellList = wSellList:addLabel(2, 2, 1, '')
+local lItems_wSellList = wSellList:addListBox('center', 3, W-4, H-6, {})
+local bCancel_wSellList = wSellList:addButton('left', H-2, 13, 1, loc.cancel, function()
   logout()
-  wallet_menu.close()
+  wSellList:hide()
+  wSellList.close()
 end)
-local function balance()
-  bb()
-  lbl_bal.text = BALANCE_TEXT
-  lbl_bal.width = #BALANCE_TEXT
-  lbl_bal.posX = math.floor((45-lbl_bal.width)/2)
-  local txt = 'Доступно операций: '.. maxlog-db.last[CURRENT_USER].count
-  lbl2_bal.text = txt
-  lbl2_bal.width = unicode.len(txt)
-  lbl2_bal.posX = math.floor((45-lbl2_bal.width)/2)
-  txt = 'Сброс через '..60-math.ceil((os.time()-db.last[CURRENT_USER].login)/4320)..' минут'
-  lbl3_bal.text = txt
-  lbl3_bal.width = unicode.len(txt)
-  lbl3_bal.posX = math.floor((45-lbl3_bal.width)/2)
-  wallet_menu:run()
-end
---------------------------------------SELL CONFIRM
-sell_confirm_dialog:addLabel(14, 1, 17, 'Продать предметы?')
-local sc_kol = sell_confirm_dialog:addLabel(1, 4, 12, 0)
-local sc_sum = sell_confirm_dialog:addLabel(1, 6, 10, 0)
-sell_confirm_dialog:addButton('left', 11, 13, 3, 'Отмена', function()
-  sell_total = 0
-  logout()
-  sell_menu.close()
-  info_dialog.close()
-  sell_confirm_dialog.close()
-end)
-sell_confirm_dialog:addButton('right', 11, 13, 3, 'Подтвердить', function()
-  relogin()
-  buy(sell_items)
-  logout()
-  sell_menu.close()
-  info_dialog.close()
-  sell_confirm_dialog.close()
-end)
---------------------------------------SELL
-local lbsell = sell_menu:addListBox('center', 3, 44, 9, {})
-local sell_money = sell_menu:addLabel(1, 1, 1, 1)
-local sell_colums = sell_menu:addLabel(1, 2, 36, 'Наименование     Количество  Сумма')
-local sell_exit = sell_menu:addButton('left', 15, 13, 1, 'Отмена', function()
-  logout()
-  sell_menu.close()
-  info_dialog.close()
-end)
-local sell_all = sell_menu:addButton(16, 15, 14, 1, 'Продать все', function()
-  if #uiBuffer > 0 then
-    local asize, amon = 0, 0
-    sell_items = {}
-    for k, v in pairs(BUFFER) do
-      asize = asize + v
-      amon = amon + (v*db.items[k].cost)
+local function sell_prepare(all)
+  if #lItems_wSellList.list > 0 then
+    local amount, item = 0
+    tmpData.price_selected = 0
+    if all then
+      tmpData.selected = tmpData.BUFFER
+      for i = 1, #lItems_wSellList.list do
+        item = tmpData.uiBuffer[0][lItems_wSellList.list[i]]
+        tmpData.price_selected = tmpData.price_selected + (db.items[item].cost*tmpData.BUFFER[item])
+        amount = amount + tmpData.BUFFER[item]
+      end
+    else
+      tmpData.selected = tmpData.uiBuffer[0][lItems_wSellList:getSelected()]
+      if tmpData.selected then
+        amount = tmpData.BUFFER[tmpData.selected]
+        tmpData.price_selected = db.items[tmpData.selected].cost*amount
+        tmpData.selected = {[tmpData.selected] = amount}
+      end
     end
-    sc_kol.text = 'Количество: '..asize
-    amon = amon-math.ceil(amon*Set)
-    if amon == 0 then amon = 1 end
-    sell_total = amon
-    sc_sum.text = 'На сумму: '..amon..' (комиссия '..Set*100 ..'%)'
-    sc_kol.width = unicode.len(sc_kol.text)
-    sc_kol.posX = math.floor((46-sc_kol.width)/2)
-    sc_sum.width = unicode.len(sc_sum.text)
-    sc_sum.posX = math.floor((46-sc_sum.width)/2)
-    sell_total = amon
-    for i, j in pairs(BUFFER) do
-      sell_items[i] = BUFFER[i]
-    end
-    sell_confirm_dialog:run()
+    tmpData.fee = math.ceil(tmpData.price_selected*cfg.fee)
+    tmpData.price_selected = tmpData.price_selected-tmpData.fee
+    txAmount_wSell.text = loc.amount..': '..amount
+    txAmount_wSell.width = utf8.len(txAmount_wSell.text)
+    txAmount_wSell.posX = hW-(txAmount_wSell.width/2)
+    txProfit_wSell.text = loc.sell_profit:gsub('_', tmpData.price_selected):gsub('~', cfg.fee*100)
+    txProfit_wSell.width = utf8.len(txProfit_wSell.text)
+    txProfit_wSell.posX = hW-(txProfit_wSell.width/2)
+    wSell:run()
+    wSellList.close()
   end
-end)
-local sell_one = sell_menu:addButton('right', 15, 13, 1, 'Продать', function()
-  if #uiBuffer > 0 then
-    sell_items = {}
-    local item = uiBuffer[0][lbsell:getSelected()]
-    sc_kol.text = 'Количество: '..BUFFER[item]
-    local amon = BUFFER[item]*db.items[item].cost
-    amon = amon-math.ceil(amon*Set)
-    if amon == 0 then amon = 1 end
-    sell_total = amon
-    sc_sum.text = 'На сумму: '..amon..' (комиссия '..Set*100 ..'%)'
-    sc_kol.width = unicode.len(sc_kol.text)
-    sc_kol.posX = math.floor((46-sc_kol.width)/2)
-    sc_sum.width = unicode.len(sc_sum.text)
-    sc_sum.posX = math.floor((46-sc_sum.width)/2)
-    sell_items[item] = BUFFER[item]
-    sell_confirm_dialog:run()
-  end
-end)
---------------------------------------SELL INFO
-local lbl_inf = info_dialog:addLabel(6, 5, 34, 'Кинь предметы для продажи роботу')
-local btn_cncl_inf = info_dialog:addButton(6, 8, 13, 3, 'Отмена', function()
-  logout()
-  info_dialog.close()
-end)
-local btn_nxt_inf = info_dialog:addButton(26, 8, 13, 3, 'Далее', function()
-  modem.broadcast(port, 0)
-  scanBuffer()
-  lbsell:updateList(uiBuffer)
-  bb()
-  sell_money.text = BALANCE_TEXT
-  sell_money.width = #BALANCE_TEXT
-  sell_money.posX = math.floor((45/2)-(sell_money.width/2))
-  sell_menu:run()
-end)
---------------------------------------
-local itemname = buy_dialog:addLabel(1, 1, 22, '')
-local itemcost = buy_dialog:addLabel(1, 1, 8, '')
-local kol = buy_dialog:addLabel(1, 1+nc.y, 12, 'Количество: ')
-local sum = buy_dialog:addLabel(1, nc.y-1, 7, 'Сумма: ')
-local amou = buy_dialog:addLabel(1+nc.x, 1+nc.y, 30, 0)
-local totalcoin = buy_dialog:addLabel(1+nc.x, nc.y-1, 30, 0)
---------------------------------------BUY
-local buy_list = buy_menu:addListBox('center', 3, 44, 9, {})
-local buy_money = buy_menu:addLabel(1, 1, 1, 1)
-local buy_colums = buy_menu:addLabel(1, 2, 36, 'Наименование     Количество  Цена')
-local buy_exit = buy_menu:addButton(1, 15, 13, 1, 'Отмена', function()
-  logout()
-  buy_menu:hide()
-  buy_menu.close()
-end)
-local buy_c = buy_menu:addButton(32, 15, 13, 1, 'Далее', function()
-  if #uiitemsNet > 0 then
-    local item_label = db.items[uiitemsNet[0][buy_list:getSelected()]].label
-    buy_cost = tostring(db.items[uiitemsNet[0][buy_list:getSelected()]].cost)
-    itemname.width = unicode.len(item_label)+14
-    itemname.text = 'Наименование: '..item_label
-    itemcost.width = #buy_cost+6
-    itemcost.posX = 45-itemcost.width
-    itemcost.text = 'Цена: '..buy_cost
-    size, amou.text, totalcoin.text = 0, 0, 0
-    buy_dialog:run()
-  end
-end)
---------------------------------------
-local function rebuild(n)
-  if size == 0 then
-    size = n
-  else
-    size = size*10+n
-  end
-  if size*buy_cost > db.users[CURRENT_USER] then -- ограничение количества по балансу
-    size = math.floor(db.users[CURRENT_USER]/buy_cost)
-  end
-  local item = db.items[uiitemsNet[0][buy_list:getSelected()]]
-  if size > item.i-item.o then -- ограничение максимального количества по рассчитанному
-    size = item.i-item.o
-  end
-  amou.text = size
-  totalcoin.text = size*buy_cost
-  amou:draw()
-  totalcoin:draw()
 end
-local num1 = buy_dialog:addButton(1+nc.x, 3+nc.y, 3, 1, '1',function()rebuild(1)end)
-local num2 = buy_dialog:addButton(6+nc.x, 3+nc.y, 3, 1, '2',function()rebuild(2)end)
-local num3 = buy_dialog:addButton(11+nc.x, 3+nc.y, 3, 1, '3',function()rebuild(3)end)
-local num4 = buy_dialog:addButton(1+nc.x, 5+nc.y, 3, 1, '4',function()rebuild(4)end)
-local num5 = buy_dialog:addButton(6+nc.x, 5+nc.y, 3, 1, '5',function()rebuild(5)end)
-local num6 = buy_dialog:addButton(11+nc.x, 5+nc.y, 3, 1, '6',function()rebuild(6)end)
-local num7 = buy_dialog:addButton(1+nc.x, 7+nc.y, 3, 1, '7',function()rebuild(7)end)
-local num8 = buy_dialog:addButton(6+nc.x, 7+nc.y, 3, 1, '8',function()rebuild(8)end)
-local num9 = buy_dialog:addButton(11+nc.x, 7+nc.y, 3, 1, '9',function()rebuild(9)end)
-local num0 = buy_dialog:addButton(6+nc.x, 9+nc.y, 3, 1, '0',function()rebuild(0)end)
-local numok = buy_dialog:addButton(11+nc.x, 9+nc.y, 3, 1, 'ok',function()
-  local item = uiitemsNet[0][buy_list:getSelected()]
-  if size > 0 then
-    sell(item, size)
-    relogin()
-    logout()
-    buy_dialog.close()
-    buy_menu:hide()
-    buy_menu.close()
-  end
+local bNext1_wSellList = wSellList:addButton('center', H-2, 13, 1, loc.sell_all, function()
+  sell_prepare(true)
 end)
-local numD = buy_dialog:addButton(1+nc.x, 9+nc.y, 3, 1, '<',function()
-  if size == 0 then
-    buy_dialog.close()
-  elseif #tostring(size) == 1 and size ~= 0 then
-    size = 0
-  elseif #tostring(size) > 1 then
-    size = (size-math.fmod(size, 10))/10
-  end
-  amou.text = size
-  totalcoin.text = size*buy_cost
-  amou:draw()
-  totalcoin:draw()
+local bNext2_wSellList = wSellList:addButton('right', H-2, 13, 1, loc.sell, function()
+  sell_prepare()
 end)
---------------------------------------MAIN
-local button_buy = main_menu:addButton('center', 2, 20, 3, 'Продать', function()
-  if db.last[CURRENT_USER].count < maxlog then
-    modem.broadcast(port, 1)
-    info_dialog:run()
-  end
-end)
-local button_sell = main_menu:addButton('center', 6, 20, 3, 'Купить', function()
-  if db.last[CURRENT_USER].count < maxlog then
-    scanNet()
-    buy_list:updateList(uiitemsNet)
-    bb()
-    buy_money.text = BALANCE_TEXT
-    buy_money.width = #BALANCE_TEXT
-    buy_money.posX = math.floor((45/2)-(buy_money.width/2))
-    buy_menu:run()
-  end
-end)
-local button_bal = main_menu:addButton('center', 10, 20, 3, 'Информация', balance)
+-----------------------------------
 
-main_menu:addHandler('touch', function(...)
+-- Sell Load ----------------------
+local txSellInfo = wSellLoad:addLabel('center', H/3, utf8.len(loc.drop), loc.drop)
+local bCancel_wSellLoad = wSellLoad:addButton('left', H-2, 20, 3, loc.cancel, function()
+  logout()
+  wSellLoad.close()
+end)
+local bNext_wSellLoad = wSellLoad:addButton('right', H-2, 20, 3, loc.next, function()
+  modem.broadcast(cfg.port, 'stop')
+  bufferScan()
+  lItems_wSellList:updateList(tmpData.uiBuffer)
+  wSellList:run()
+  wSellLoad.close()
+end)
+-----------------------------------
+
+-- Info ---------------------------
+local txBalance_wInfo = wInfo:addLabel(1, H/2-3, 1, '')
+local txOperations_wInfo = wInfo:addLabel(1, H/2-1, 1, '')
+local txReset_wInfo = wInfo:addLabel(1, H/2, 1, '')
+local bExit_wInfo = wInfo:addButton('center', 10+(H-15)/2, 20+W%2, 3, loc.exit, function()
+  logout()
+  wInfo:hide()
+  wInfo.close()
+end)
+-----------------------------------
+
+-- Main ---------------------------
+--local bExit_wMain = wMain:addButton('left', H-1, 4, 1, loc.exit, wMain.close)
+local bToBuy_wMain = wMain:addButton('center', 2+(H-15)/2, 20+W%2, 3, loc.buy, function()
+  if db.users[tmpData.CURRENT_USER].count < cfg.logins then
+    computer.beep(1000, 0.05)
+    txBalance_wBuyList.text = tmpData.BALANCE_TEXT
+    txBalance_wBuyList.width = tmpData.BTXT_LEN
+    txTooltip_wBuyList.text = tmpData.tooltip
+    txTooltip_wBuyList.width = tmpData.ttp_len
+    netScan()
+    lItems_wBuyList:updateList(tmpData.uiStorage)
+    wBuyList:run()
+  end
+end)
+local bToSell_wMain = wMain:addButton('center', 6+(H-15)/2, 20+W%2, 3, loc.sell, function()
+  if db.users[tmpData.CURRENT_USER].count < cfg.logins then
+    modem.broadcast(cfg.port, 'import')
+    computer.beep(800, 0.05)
+    txTooltip_wSellList.text = tmpData.tooltip
+    txTooltip_wSellList.width = tmpData.ttp_len
+    txBalance_wSellList.text = tmpData.BALANCE_TEXT
+    txBalance_wSellList.width = tmpData.BTXT_LEN
+    txBalance_wSellList.posX = hW-(tmpData.BTXT_LEN/2)
+    wSellLoad:run()
+  end
+end)
+local bInfo_wMain = wMain:addButton('center', 10+(H-15)/2, 20+W%2, 3, loc.info, function()
+  computer.beep(900, 0.05)
+  txBalance_wInfo.text = tmpData.BALANCE_TEXT
+  txBalance_wInfo.width = tmpData.BTXT_LEN
+  txBalance_wInfo.posX = hW-(tmpData.BTXT_LEN/2)
+  txOperations_wInfo.text = loc.operations..cfg.logins-db.users[tmpData.CURRENT_USER].count
+  txOperations_wInfo.width = utf8.len(txOperations_wInfo.text)
+  txOperations_wInfo.posX = hW-(txOperations_wInfo.width/2)
+  txReset_wInfo.text = loc.reset:gsub('_', 60-math.ceil((os.time()-db.users[tmpData.CURRENT_USER].lastlogin)/4320))
+  txReset_wInfo.width = utf8.len(txReset_wInfo.text)
+  txReset_wInfo.posX = hW-(txReset_wInfo.width/2)
+  wInfo:run()
+end)
+-----------------------------------
+wMain:addHandler('touch', function(...)
   local e = {...}
-  CURRENT_USER = e[6]
-  lastlogin = computer.uptime()
-  computer.addUser(CURRENT_USER)
-  if not db.users[CURRENT_USER] then
-    db.users[CURRENT_USER] = 0
+  tmpData.CURRENT_USER = e[6]
+  tmpData.lastlogin = computer.uptime()
+  computer.addUser(tmpData.CURRENT_USER)
+  if not db.users[tmpData.CURRENT_USER] then
+    db.users[tmpData.CURRENT_USER] = {
+      balance = 0,
+      count = 0,
+      lastlogin = os.time()
+    }
   end
-  if not db.last[CURRENT_USER] then
-    db.last[CURRENT_USER] = {login = os.time(), count = 0}
+  if os.time()-db.users[tmpData.CURRENT_USER].lastlogin > 259200 then
+    db.users[tmpData.CURRENT_USER].lastlogin = os.time()
+    db.users[tmpData.CURRENT_USER].count = 0
   end
-  if os.time()-db.last[CURRENT_USER].login > 259200 then
-    db.last[CURRENT_USER].login = os.time()
-    db.last[CURRENT_USER].count = 0
-  end
-  bb()
+  update_txBalance()
 end)
-
+wMain:addLabel('left', 1, 10, tmpData.CURRENT_USER)
 _G.m_timer = event.timer(60, function()
-  if CURRENT_USER and computer.uptime()-lastlogin >= 120 then
+  if tmpData.CURRENT_USER and computer.uptime()-tmpData.lastlogin >= 120 then
     logout()
-    sell_menu.close()
-    buy_menu.close()
-    wallet_menu.close()
-    info_dialog.close()
-    buy_dialog.close()
-    sell_confirm_dialog.close()
+    wMain:run()
+    wBuyList.close()
+    wBuy.close()
+    wSellLoad.close()
+    wSellList.close()
+    wSell.close()
+    wInfo.close()
+    wMain:draw()
   end
 end, math.huge)
-
-os.execute('cls')
-loaddb()
-main_menu:run()
+-----------------------------------
+tmpData.tooltip = add_sp(add_sp(loc.label, W-26)..loc.amount, W-16)..' '..loc.price
+tmpData.ttp_len = utf8.len(tmpData.tooltip)
+modem.setStrength(10)
+modem.open(cfg.port)
+load_db()
+wMain:run()
