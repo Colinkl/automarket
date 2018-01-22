@@ -2,6 +2,7 @@ local modem = component.proxy(component.list('modem')())
 local robot = component.proxy(component.list('robot')())
 local address = '----'
 modem.open(3215)
+modem.setWakeMessage('start')
 local status = 'stop'
 local signal = computer.pullSignal
 
