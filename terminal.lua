@@ -100,6 +100,7 @@ local function add_sp(str, n)
 end
 
 local function logout()
+  save_db()
   computer.beep(220, 0.1)
   modem.broadcast(cfg.port, 'export')
   computer.removeUser(tmpData.CURRENT_USER)
@@ -127,7 +128,6 @@ local function updateCost(item)
     db.users[tmpData.CURRENT_USER].count = 1
     db.users[tmpData.CURRENT_USER].lastlogin = os.time()
   end
-  save_db()
 end
 
 local function buy(item, amount)
