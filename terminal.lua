@@ -127,6 +127,7 @@ local function updateCost(item)
     db.users[tmpData.CURRENT_USER].count = 1
     db.users[tmpData.CURRENT_USER].lastlogin = os.time()
   end
+  save_db()
 end
 
 local function buy(item, amount)
