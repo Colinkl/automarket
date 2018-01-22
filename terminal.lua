@@ -508,6 +508,7 @@ wMain:addHandler('touch', function(...)
   tmpData.CURRENT_USER = e[6]
   tmpData.lastlogin = computer.uptime()
   computer.addUser(tmpData.CURRENT_USER)
+  modem.broadcast(cfg.port, 'start')
   if not db.users[tmpData.CURRENT_USER] then
     db.users[tmpData.CURRENT_USER] = {
       balance = 0,
