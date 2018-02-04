@@ -3,9 +3,7 @@
   items = {
     ['minecraft:stone|0'] = {label = 'Камень', i = 0, o = 0, cost = 1},
     ['minecraft:grass|0'] = {label = 'Трава', i = 0, o = 0, cost = 1},
-    ['minecraft:dirt|0'] = {label = 'Земля', i = 0, o = 0, cost = 1},
     ['minecraft:dirt|2'] = {label = 'Подзол', i = 0, o = 0, cost = 1},
-    ['minecraft:cobblestone|0'] = {label = 'Булыжник', i = 0, o = 0, cost = 1},
     ['minecraft:sapling|0'] = {label = 'Дубовый саженец', i = 0, o = 0, cost = 1},
     ['minecraft:sapling|1'] = {label = 'Еловый саженец', i = 0, o = 0, cost = 1},
     ['minecraft:sapling|2'] = {label = 'Берёзовый саженец', i = 0, o = 0, cost = 1},
