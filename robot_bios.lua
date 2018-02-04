@@ -23,6 +23,6 @@ while true do
       robot.drop(3)
     end
   elseif status == 'stop' then
-    computer.pullSignal(1)
+    computer.pullSignal(0.5)
   end
 end
