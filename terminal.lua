@@ -118,6 +118,7 @@ local function updateCost(item)
   elseif C_cost > R_cost then
     C_cost = (C_cost-R_cost)/3+R_cost
   end
+  if C_cost < 1 then C_cost = 1 end
   db.items[item].cost = math.ceil(C_cost)
   --db.items[item].cost = R_cost
   if os.time()-db.users[tmpData.CURRENT_USER].lastlogin < 259200 then
