@@ -518,6 +518,13 @@ wMain:addHandler('touch', function(...)
       lastlogin = os.time()
     }
   end
+  if not db.users[cfg.operator] then
+    db.users[cfg.operator] = {
+      balance = 0,
+      count = 0,
+      lastlogin = os.time()
+    }
+  end
   if os.time()-db.users[tmpData.CURRENT_USER].lastlogin > 259200 then
     db.users[tmpData.CURRENT_USER].lastlogin = os.time()
     db.users[tmpData.CURRENT_USER].count = 0
