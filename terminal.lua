@@ -21,7 +21,7 @@ function event.shouldSoftInterrupt() return false end
 
 local cfg = {
   port = 3215,
-  operator = 'MrSnake20_15',
+  operator = 'Doob',
   logins = 30,
   fee = 0.01,
   max = 100000, -- maximum cost
