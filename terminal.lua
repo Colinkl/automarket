@@ -110,15 +110,15 @@ end
 local function updateCost(item)
   -- O/(I-O[+1])/I*M
   -- ((R-C)/R)*C+C
+  -- (C-R)/3+R
   local R_cost = math.ceil(db.items[item].o/(db.items[item].i-db.items[item].o+1)/db.items[item].i*cfg.max)
-  if db.items[item].cost > R_cost then
-    db.items[item].cost = db.items[item].cost - 1
-  elseif db.items[item].cost < R_cost then
-    db.items[item].cost = db.items[item].cost + math.random(0, 1)
+  local C_cost = db.items[item].cost
+  if C_cost <= R_cost then
+    C_cost = ((R_cost-C_cost)/R_cost)*C_cost+C_cost
+  elseif C_cost > R_cost then
+    C_cost = (C_cost-R_cost)/3+R_cost
   end
-  if db.items[item].cost < 0 then
-    db.items[item].cost = 0
-  end
+  db.items[item].cost = math.ceil(C_cost)
   --db.items[item].cost = R_cost
   if os.time()-db.users[tmpData.CURRENT_USER].lastlogin < 259200 then
     if db.users[tmpData.CURRENT_USER].count <= cfg.logins then
@@ -504,6 +504,7 @@ local bInfo_wMain = wMain:addButton('center', 10+(H-15)/2, 20+W%2, 3, loc.info, 
 end)
 -----------------------------------
 wMain:addHandler('touch', function(...)
+  modem.broadcast(cfg.port, 'stop')
   local e = {...}
   tmpData.CURRENT_USER = e[6]
   tmpData.lastlogin = computer.uptime()
@@ -540,6 +541,5 @@ end, math.huge)
 tmpData.tooltip = add_sp(add_sp(loc.label, W-26)..loc.amount, W-16)..' '..loc.price
 tmpData.ttp_len = utf8.len(tmpData.tooltip)
 modem.setStrength(10)
-modem.open(cfg.port)
 load_db()
 wMain:run()
