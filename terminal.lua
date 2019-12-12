@@ -23,10 +23,10 @@ local cfg = {
   port = 3215,
   operator = 'ColinklHERE',
   logins = 30,
-  fee = 0.01,
+  fee = 0.3
   max = 100000, -- maximum cost
   ic_side = 1, -- chest for i_c
-  mei_side = 'WEST' -- chest for me_interface
+  mei_side = 'EAST' -- chest for me_interface
 }
 
 local tmpData = {
@@ -158,7 +158,8 @@ end
 local function sell()
   for item, amount in pairs(tmpData.selected) do
     local result = 0
-    for slot = 1, i_c.getInventorySize(cfg.ic_side) do
+	local chests  = i_c.getInventorySize()
+    for slot = 1, chests do
       local fitem = i_c.getStackInSlot(cfg.ic_side, slot)
       if fitem and item == fitem.name..'|'..fitem.damage then
         local size
