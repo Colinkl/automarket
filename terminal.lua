@@ -10,7 +10,7 @@ local serialization = require('serialization')
 local modem = component.modem
 local i_c = component.inventory_controller
 local interface = component.me_interface
-component.gpu.setResolution(48, 17)
+component.gpu.setResolution(160, 50)
 local W, H = component.gpu.getResolution()
 local hW = W/2
 local db = {}
