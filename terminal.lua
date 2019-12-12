@@ -76,7 +76,7 @@ local function load_db()
     file = io.open('market.db', 'w')
     file:write(serialization.serialize(db))
   else
-    local serdb = file:read('a')
+    local serdb = file:read('*a')
     db = serialization.unserialize(serdb)
   end
   file:close()
