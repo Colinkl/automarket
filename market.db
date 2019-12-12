@@ -1,7 +1,7 @@
 {
   users = {},
   items = {
-    ['minecraft:stone|0'] = {label = 'Камень', i = 0, o = 0, cost = 1},
+    ['minecraft:stone|0'] = {label = 'Камень', i = 100, o = 100, cost = 1},
     ['minecraft:grass|0'] = {label = 'Трава', i = 0, o = 0, cost = 1},
     ['minecraft:dirt|2'] = {label = 'Подзол', i = 0, o = 0, cost = 1},
     ['minecraft:sapling|0'] = {label = 'Дубовый саженец', i = 0, o = 0, cost = 1},
